@@ -1,0 +1,59 @@
+// constants won't change. They're used here to set pin numbers:
+const int button1Pin = 2;     // the number of the pushbutton1 pin
+const int button2Pin = 4;     // the number of the pushbutton2 pin
+const int lightSensorPin=9;  //the number of the light sensor pin
+const int inAPin =  7;      // the number of the inA pin on motor controller
+const int inBPin =  8;      // the number of the inB pin on motor controller
+const int PWMPin = 6;    //the number of the PWM pin on motor controller
+
+
+
+// variables will change:
+int button1State = 0;         // variable for reading the pushbutton status
+int button2State = 0;         // variable for reading the pushbutton status
+
+const int sensorPin = 0;    // select the input pin for the potentiometer
+int sensorValue = 0;  // variable to store the value coming from the sensor
+
+int LightOpenDoor = 700;
+int LightCloseDoor = 15;
+
+
+void setup() { 
+  //start serial connection
+  Serial.begin(9600);  
+  
+  // initialize the pushbutton pin as an input:
+  pinMode(button1Pin, INPUT);     
+  pinMode(button2Pin, INPUT);    
+  // initialize the relay pin as an output:
+  pinMode(inAPin, OUTPUT);    
+  pinMode(inBPin, OUTPUT);    
+  pinMode(PWMPin, OUTPUT);
+}
+
+
+void loop(){
+
+  int sensor_value = analogRead(A0);
+  Serial.println(sensor_value);
+  if (sensor_value > LightOpenDoor)// the point at which the door will open
+    { 
+      digitalWrite(inBPin, HIGH); //opens door 
+      analogWrite(PWMPin,255);  
+    }
+  else if (sensor_value <LightCloseDoor) {
+      digitalWrite(inAPin, HIGH);  
+      analogWrite(PWMPin,255);  //closes door
+  }
+  else if (sensor_value > LightCloseDoor && sensor_value < LightOpenDoor)
+    {
+      digitalWrite(inBPin, LOW);
+      digitalWrite(inAPin, LOW);  
+      analogWrite(PWMPin,255);  
+    }
+      
+ delay(10);
+
+  
+}
