@@ -5,19 +5,39 @@ const int lightSensorPin=9;  //the number of the light sensor pin
 const int inAPin =  7;      // the number of the inA pin on motor controller
 const int inBPin =  8;      // the number of the inB pin on motor controller
 const int PWMPin = 6;    //the number of the PWM pin on motor controller
+const int bottomSwitchPin = 12;  //the number of the bottom reed switch input  
 
-
+// print debug messages or not to serial
+const boolean SerialDisplay = true;
 
 // variables will change:
 int button1State = 0;         // variable for reading the pushbutton status
 int button2State = 0;         // variable for reading the pushbutton status
 
-const int sensorPin = 0;    // select the input pin for the potentiometer
 int sensorValue = 0;  // variable to store the value coming from the sensor
 
 int LightOpenDoor = 700;
 int LightCloseDoor = 15;
 
+// photocell
+int photocellReading;                            // analog reading of the photocel
+int photocellReadingLevel;                       // photocel reading levels (dark, twilight, light)
+
+// bottom switch
+ 
+int bottomSwitchPinVal;                // bottom switch var for reading the pin status
+int bottomSwitchPinVal2;               // bottom switch var for reading the pin delay/debounce status
+int bottomSwitchState;                 // bottom switch var for to hold the switch state
+
+// photocell reading delay
+unsigned long lastPhotocellReadingTime = 0;
+unsigned long photocellReadingDelay = 1000;   // 1 second, change to 600000 for 10 minutes
+
+// debounce delay
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 100;
+
+//**********************The setup******************************
 
 void setup() { 
   //start serial connection
@@ -30,30 +50,132 @@ void setup() {
   pinMode(inAPin, OUTPUT);    
   pinMode(inBPin, OUTPUT);    
   pinMode(PWMPin, OUTPUT);
+  // coop door switches
+  // bottom switch
+  pinMode(bottomSwitchPin, INPUT);                  // set bottom switch pin as input
+  digitalWrite(bottomSwitchPin, HIGH);              // activate bottom switch resistor
 }
 
+//*********************Functions************************
 
-void loop(){
-
-  int sensor_value = analogRead(A0);
-  Serial.println(sensor_value);
-  if (sensor_value > LightOpenDoor)// the point at which the door will open
-    { 
-      digitalWrite(inBPin, HIGH); //opens door 
-      analogWrite(PWMPin,255);  
+void doReadPhotoCell() { // function to be called repeatedly - per coopPhotoCellTimer set in setup
+ 
+  photocellReading = analogRead(lightSensorPin);
+ 
+  if ((unsigned long)(millis() - lastPhotocellReadingTime) >= photocellReadingDelay) {
+    lastPhotocellReadingTime = millis();
+ 
+    //  set photocel threshholds
+    if (photocellReading >= 0 && photocellReading <= LightCloseDoor) {
+      photocellReadingLevel = '1';
+ 
+      if (SerialDisplay) {
+        Serial.println(" Photocel Reading Level:");
+        Serial.println(" - Dark");
+      }
     }
-  else if (sensor_value <LightCloseDoor) {
-      digitalWrite(inAPin, HIGH);  
-      analogWrite(PWMPin,255);  //closes door
+    else if (photocellReading  >LightCloseDoor && photocellReading < LightOpenDoor) {
+      photocellReadingLevel = '2';
+      if (SerialDisplay) {
+        Serial.println(" Photocel Reading Level:");
+        Serial.println(" - Twilight");
+      }
+    }
+    else if (photocellReading  >= LightOpenDoor ) {
+      photocellReadingLevel = '3';
+      if (SerialDisplay) {
+        Serial.println(" Photocel Reading Level:");
+        Serial.println(" - Light");
+      }
+    }
+    if (SerialDisplay) {
+      Serial.println(" Photocel Analog Reading = ");
+      Serial.println(photocellReading);
+    }
   }
-  else if (sensor_value > LightCloseDoor && sensor_value < LightOpenDoor)
-    {
-      digitalWrite(inBPin, LOW);
-      digitalWrite(inAPin, LOW);  
-      analogWrite(PWMPin,255);  
-    }
-      
- delay(10);
-
-  
 }
+
+//debounce bottom reed switch
+ 
+void debounceBottomReedSwitch() {
+ 
+  //debounce bottom reed switch
+  bottomSwitchPinVal = digitalRead(bottomSwitchPin);       // read input value and store it in val
+ 
+  if ((unsigned long)(millis() - lastDebounceTime) > debounceDelay) {    // delay 10ms for consistent readings
+ 
+    bottomSwitchPinVal2 = digitalRead(bottomSwitchPin);    // read input value again to check or bounce
+ 
+    if (bottomSwitchPinVal == bottomSwitchPinVal2) {       // make sure we have 2 consistant readings
+      if (bottomSwitchPinVal != bottomSwitchState) {       // the switch state has changed!
+        bottomSwitchState = bottomSwitchPinVal;
+      }
+      if (SerialDisplay) {
+        Serial.print (" Bottom Switch Value: ");           // display "Bottom Switch Value:"
+        Serial.println(digitalRead(bottomSwitchPin));      // display current value of bottom switch;
+      }
+    }
+  }
+}
+
+
+// stop the coop door motor
+void stopCoopDoorMotorB() {
+  digitalWrite(inBPin, LOW);
+  digitalWrite(inAPin, LOW);  
+  analogWrite(PWMPin,255);
+}
+
+
+// close the coop door motor (motor dir close = clockwise)
+void closeCoopDoorMotorB() {
+  digitalWrite(inAPin, HIGH);  //closes door
+  analogWrite(PWMPin,255);  // enable motor, full speed              
+  if (bottomSwitchPinVal == 0) {                         // if bottom reed switch circuit is closed
+    stopCoopDoorMotorB();
+    if (SerialDisplay) {
+      Serial.println(" Coop Door Closed - no danger");
+    }
+  }
+}
+
+
+
+// open the coop door (motor dir open = counter-clockwise)
+void openCoopDoorMotorB() {
+  digitalWrite(inBPin, HIGH); //opens door 
+  analogWrite(PWMPin,255);    // enable motor, full speed
+   
+}
+
+// do the coop door
+void doCoopDoor() {
+  if (photocellReadingLevel  == '1') {              // if it's dark
+    if (photocellReadingLevel != '2') {             // if it's not twilight
+      if (photocellReadingLevel != '3') {           // if it's not light                   
+        debounceBottomReedSwitch();                 // read and debounce the switches
+        closeCoopDoorMotorB();                      // close the door
+      }
+    }
+  }
+  if (photocellReadingLevel  == '3') {              // if it's light
+    if (photocellReadingLevel != '2') {             // if it's not twilight
+      if (photocellReadingLevel != '1') {           // if it's not dark                    
+        debounceBottomReedSwitch();          // read and debounce the switches
+        openCoopDoorMotorB();                       // Open the door
+      }
+    }
+  }
+}
+// ************************************** the loop **************************************
+
+void loop() {
+  
+  doReadPhotoCell();
+  doCoopDoor();
+
+}
+
+
+
+
